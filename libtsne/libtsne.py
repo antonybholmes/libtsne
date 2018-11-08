@@ -11,11 +11,15 @@ import phenograph
 import collections
 import os
 from sklearn.manifold import TSNE
+from sklearn.cluster import KMeans
 import numpy as np
 import matplotlib
 from matplotlib import pyplot as plt
 import libcluster
 import libsparse
+from libsparse import SparseDataFrame
+
+
 
 # As per 10x
 TSNE_PERPLEXITY = 30
@@ -38,6 +42,13 @@ def get_cluster_file(name, tpmmode=True, logmode=True):
   
   return file
 
+
+def get_kmeans_file(name, clusters):
+  file = 'clusters_kmeans_{}_{}.txt'.format(clusters, name)
+  
+  return file
+
+
 def get_pca_file(name, tpmmode=True, logmode=True):
   return 'pca_data_{}.txt'.format(name)
   
@@ -45,19 +56,11 @@ def get_pca_file(name, tpmmode=True, logmode=True):
 def get_pca_var_file(name, tpmmode=True, logmode=True):
   return 'pca_var_{}.txt'.format(name)
 
+def get_dim_file(name, mode='tsne'):
+  return '{}_data_{}.txt'.format(mode, name)
 
 def get_tsne_file(name, tpmmode=True, logmode=True):
-  file = 'tsne_data_{}.txt'.format(name)
-  
-  #if tpmmode:
-  #  file += '_tpm'
-    
-  #if logmode:
-  #  file += '_log2'
-  
-  #file += '.txt'
-  
-  return file
+  return get_dim_file(name, mode='tsne')
 
 
 def write_clusters(headers, labels, name, tpmmode=True, logmode=True):
@@ -77,8 +80,23 @@ def write_clusters(headers, labels, name, tpmmode=True, logmode=True):
   
     df.to_csv(file, sep='\t', header=True, index=True)
   
-    #np.savetxt('clusters_{}.txt'.format(name), labels, fmt='%d', delimiter='\t', newline='\n', header='clusters')
+def write_kmeans_clusters(name, clusters, headers, labels):
+    file = get_kmeans_file(name, clusters)
   
+    print('Writing k-means clusters to {}...'.format(file))
+  
+    if type(headers) is pd.core.frame.DataFrame:
+        headers = headers.iloc[:, 0].tolist()
+  
+    # one based is a convience for users so that they don't have to use
+    # zero based ids
+    df = pd.DataFrame({'Barcode':headers, 'Cluster':labels})
+  
+    df = df[['Barcode', 'Cluster']]
+    df = df.set_index('Barcode')
+  
+    df.to_csv(file, sep='\t', header=True, index=True)
+    
   
 def read_clusters(file):
   print('Reading clusters from {}...'.format(file))
@@ -94,7 +112,7 @@ def read_clusters(file):
 
 
 
-def load_pca_clusters(pca, name, cache=True):
+def load_phenograph_clusters(pca, name, cache=True):
     """
     Given a pca matrix, cluster on it
     
@@ -119,8 +137,6 @@ def load_pca_clusters(pca, name, cache=True):
     if not os.path.isfile(file) or not cache:
         print('{} was not found, creating it with...'.format(file))
         
-        print(pca.shape)
-        
         k = min(pca.shape[0] - 2, 20)
         
         # Find the interesting clusters
@@ -140,6 +156,47 @@ def load_pca_clusters(pca, name, cache=True):
     #return cluster_map, labels
     return labels
 
+
+def load_kmeans_clusters(pca, name, clusters=10, cache=True):
+    """
+    Given a pca matrix, cluster on it
+    
+    Parameters
+    ----------
+    pca : array, shape (n_samples, n_pca)
+        
+    name : str
+        Name of run.
+
+    cache : bool, optional
+        Create a file of the clusters for reloading. Default is True.
+
+    Returns
+    -------
+    tsne :  array, shape (n_samples, 2)
+        The tsne coordinates for each sample
+    """
+    
+    file = get_kmeans_file(name, clusters)
+  
+    if not os.path.isfile(file) or not cache:
+        print('{} was not found, creating it with...'.format(file))
+        
+        labels = KMeans(n_clusters=clusters).fit_predict(pca)
+        
+        if min(labels) == -1:
+          new_label = 100
+          labels[np.where(labels == -1)] = new_label
+          
+        labels += 1
+        
+        write_kmeans_clusters(name, clusters, pca.index.tolist(), labels)
+        
+    cluster_map, data = read_clusters(file)
+          
+    labels = data
+    
+    return labels
 
 
 def read_pca(file):
@@ -254,8 +311,8 @@ def load_pca_tsne(pca, name, tpmmode=True, logmode=True, exclude=[], cache=True)
         
         tsne = new_tsne()
         
-        if isinstance(pca, libsparse.SparseDataFrame):
-            tsne_results = libsparse.SparseDataFrame(tsne.fit_transform(pca.data), pca.index, pca.columns)
+        if isinstance(pca, SparseDataFrame):
+            tsne_results = SparseDataFrame(tsne.fit_transform(pca.data), pca.index, pca.columns)
         else:
             tsne_results = tsne.fit_transform(pca)
         
@@ -335,7 +392,7 @@ def tsne_legend(ax, labels, colors):
 
 
 def get_tsne_plot_name(name, t1=1, t2=2):
-    return 'tsne_{}_t{}_vs_t{}.pdf'.format(name, t1, t2)
+    return 'tsne_{}.pdf'.format(name) #, t1, t2)
       
 
 def format_simple_axes(ax, title="t-SNE", dim1=1, dim2=2, subtitle1="", subtitle2=""):
