@@ -29,42 +29,56 @@ TSNE_RANDOM_STATE = 0 #42
 TSNE_METRIC = 'correlation' #'euclidean' #'correlation'
 TSNE_INIT = 'pca'
 
-def get_cluster_file(name, tpmmode=True, logmode=True):
-  file = 'clusters_{}.txt'.format(name)
+def get_cluster_file(dir, name, tpmmode=True, logmode=True):
+    if dir.endswith('/'):
+        dir = dir[:-1]
+        
+    file = '{}/clusters_{}.txt'.format(dir, name)
   
-  #if tpmmode:
-  #  file += '_tpm'
+    #if tpmmode:
+    #  file += '_tpm'
     
-  #if logmode:
-  #  file += '_log2'
+    #if logmode:
+    #  file += '_log2'
   
-  #file += '.txt'
+    #file += '.txt'
   
-  return file
+    return file
 
 
-def get_kmeans_file(name, clusters):
-  file = 'clusters_kmeans_{}_{}.txt'.format(clusters, name)
+def get_kmeans_file(dir, name, clusters):
+    if dir.endswith('/'):
+        dir = dir[:-1]
+        
+    file = '{}/clusters_kmeans_{}_{}.txt'.format(dir, clusters, name)
   
-  return file
+    return file
 
 
-def get_pca_file(name, tpmmode=True, logmode=True):
-  return 'pca_data_{}.txt'.format(name)
+def get_pca_file(dir, name, tpmmode=True, logmode=True):
+    if dir.endswith('/'):
+        dir = dir[:-1]
+        
+    return '{}/pca_data_{}.txt'.format(dir, name)
   
   
 def get_pca_var_file(name, tpmmode=True, logmode=True):
   return 'pca_var_{}.txt'.format(name)
 
-def get_dim_file(name, mode='tsne'):
-  return '{}_data_{}.txt'.format(mode, name)
 
-def get_tsne_file(name, tpmmode=True, logmode=True):
-  return get_dim_file(name, mode='tsne')
+def get_dim_file(dir, name, mode='tsne'):
+    if dir.endswith('/'):
+        dir = dir[:-1]
+  
+    return '{}/{}_data_{}.txt'.format(dir, mode, name)
 
 
-def write_clusters(headers, labels, name, tpmmode=True, logmode=True):
-    file = get_cluster_file(name, tpmmode=tpmmode, logmode=logmode)
+def get_tsne_file(dir, name, tpmmode=True, logmode=True):
+    return get_dim_file(dir, name, mode='tsne')
+
+
+def write_clusters(headers, labels, name, tpmmode=True, logmode=True, dir='.'):
+    file = get_cluster_file(dir, name, tpmmode=tpmmode, logmode=logmode)
   
     print('Writing clusters to {}...'.format(file))
   
@@ -80,8 +94,8 @@ def write_clusters(headers, labels, name, tpmmode=True, logmode=True):
   
     df.to_csv(file, sep='\t', header=True, index=True)
   
-def write_kmeans_clusters(name, clusters, headers, labels):
-    file = get_kmeans_file(name, clusters)
+def write_kmeans_clusters(name, clusters, headers, labels, dir='.'):
+    file = get_kmeans_file(dir, name, clusters)
   
     print('Writing k-means clusters to {}...'.format(file))
   
@@ -112,7 +126,11 @@ def read_clusters(file):
 
 
 
-def load_phenograph_clusters(pca, name, cache=True):
+def load_phenograph_clusters(pca, 
+                             name, 
+                             cache=True,
+                             neighbors=20,
+                             dir='.'):
     """
     Given a pca matrix, cluster on it
     
@@ -132,12 +150,12 @@ def load_phenograph_clusters(pca, name, cache=True):
         The tsne coordinates for each sample
     """
     
-    file = get_cluster_file(name)
+    file = get_cluster_file(dir, name)
   
     if not os.path.isfile(file) or not cache:
         print('{} was not found, creating it with...'.format(file))
         
-        k = min(pca.shape[0] - 2, 20)
+        k = min(pca.shape[0] - 2, neighbors)
         
         # Find the interesting clusters
         labels, graph, Q = phenograph.cluster(pca, k=k)
@@ -157,7 +175,7 @@ def load_phenograph_clusters(pca, name, cache=True):
     return labels
 
 
-def load_kmeans_clusters(pca, name, clusters=10, cache=True):
+def load_kmeans_clusters(pca, name, clusters=10, cache=True, dir='.'):
     """
     Given a pca matrix, cluster on it
     
@@ -177,7 +195,7 @@ def load_kmeans_clusters(pca, name, clusters=10, cache=True):
         The tsne coordinates for each sample
     """
     
-    file = get_kmeans_file(name, clusters)
+    file = get_kmeans_file(dir, name, clusters)
   
     if not os.path.isfile(file) or not cache:
         print('{} was not found, creating it with...'.format(file))
@@ -190,7 +208,7 @@ def load_kmeans_clusters(pca, name, clusters=10, cache=True):
           
         labels += 1
         
-        write_kmeans_clusters(name, clusters, pca.index.tolist(), labels)
+        write_kmeans_clusters(name, clusters, pca.index.tolist(), labels, dir=dir)
         
     cluster_map, data = read_clusters(file)
           
@@ -199,22 +217,30 @@ def load_kmeans_clusters(pca, name, clusters=10, cache=True):
     return labels
 
 
-def read_pca(file):
+def read_pca(file, dir='.'):
     if not os.path.isfile(file):
-        file = get_pca_file(file)
+        file = get_pca_file(dir, file)
     
     print('Reading pca from {}...'.format(file))
   
     return pd.read_csv(file, sep='\t', header=0, index_col=0)
 
 
-def load_pca(data, name, n=50, tpmmode=True, logmode=True, exclude=[], cache=True):
-  file = get_pca_file(name, tpmmode=tpmmode, logmode=logmode)
+def load_pca(data, 
+             name, 
+             n=50, 
+             mode='random', 
+             tpmmode=True, 
+             logmode=True, 
+             exclude=[], 
+             cache=True, 
+             dir='.'):
+  file = get_pca_file(dir, name, tpmmode=tpmmode, logmode=logmode)
   
   if not os.path.isfile(file) or not cache:
     print('{} was not found, creating it with n={}...'.format(file, n))
     
-    p, pca = libcluster.pca(data, n=n, exclude=exclude)
+    p, pca = libcluster.pca(data, n=n, mode=mode, exclude=exclude)
     
     labels = ['PC-{}'.format(x + 1) for x in range(0, pca.shape[1])]
     
@@ -284,7 +310,7 @@ def load_tsne(data, name, n=50, tpmmode=True, logmode=True, exclude=[]):
     return read_tsne(file)
 
 
-def load_pca_tsne(pca, name, tpmmode=True, logmode=True, exclude=[], cache=True):
+def load_pca_tsne(pca, name, tpmmode=True, logmode=True, exclude=[], cache=True, dir='.'):
     """
     Run t-sne using pca result
 
@@ -302,7 +328,7 @@ def load_pca_tsne(pca, name, tpmmode=True, logmode=True, exclude=[], cache=True)
         The tsne coordinates for each sample
     """
   
-    file = get_tsne_file(name, tpmmode=tpmmode, logmode=logmode)
+    file = get_tsne_file(dir, name, tpmmode=tpmmode, logmode=logmode)
   
     if not os.path.isfile(file) or not cache:
         print('{} was not found, creating it...'.format(file))
